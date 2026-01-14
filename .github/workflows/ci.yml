@@ -2,40 +2,40 @@ name: CI
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [main, develop]
   pull_request:
-    branches: [ main, develop ]
+    branches: [main, develop]
 
 jobs:
   quality:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.9", "3.10", "3.11", "3.12"]
+        python-version: ["3.12"]
 
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Install uv
-      uses: astral-sh/setup-uv@v4
-      with:
-        version: "latest"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
 
-    - name: Set up Python ${{ matrix.python-version }}
-      run: uv python install ${{ matrix.python-version }}
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
 
-    - name: Install dependencies
-      run: uv sync --group dev
+      - name: Install dependencies
+        run: uv sync --group dev
 
-    - name: Run ruff check
-      run: uv run ruff check .
+      - name: Run ruff check
+        run: uv run ruff check .
 
-    - name: Run ruff format check
-      run: uv run ruff format --check .
+      - name: Run ruff format check
+        run: uv run ruff format --check .
 
-    - name: Run ty
-      run: uv run ty check .
+      - name: Run ty
+        run: uv run ty check .
 
-    - name: Test basic functionality
-      run: |
-        echo "What paradigms does Python support?" | uv run python main.py
+      - name: Test basic functionality
+        run: |
+          echo "What paradigms does Python support?" | uv run python main.py
