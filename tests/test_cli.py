@@ -222,3 +222,173 @@ def test_cli_error_handling(cli_runner, temp_database):
 
     # Should handle gracefully (may ask for interactive mode or show help)
     assert result.exit_code in [0, 1, 2]  # Various acceptable outcomes
+
+
+def test_cli_query_interactive_mode(cli_runner, temp_database):
+    """Test query interactive mode."""
+    with (
+        patch("brainfs.cli.VectorStore") as mock_store,
+        patch("brainfs.cli.Tokenizer") as mock_tokenizer,
+    ):
+        mock_tokenizer.return_value.embed.return_value = [0.1, 0.2, 0.3]
+        mock_store.return_value.search.return_value = [(0.8, "test.txt: Sample content")]
+
+        # Test interactive mode with immediate exit
+        result = cli_runner.invoke(main, ["query", "--interactive"], input="quit\n")
+        # Should not crash, may exit with various codes
+        assert result.exit_code in [0, 1]
+
+
+def test_cli_index_error_scenarios(cli_runner, temp_database):
+    """Test various index error scenarios."""
+    # Test indexing with invalid options
+    result = cli_runner.invoke(main, ["index", "--chunk-method", "invalid", "/nonexistent"])
+    # Should handle gracefully
+    assert result.exit_code != 0
+
+
+def test_cli_missing_dependencies_simulation(cli_runner, temp_database):
+    """Test CLI behavior when dependencies are missing."""
+    with patch("brainfs.cli.parse_document") as mock_parse:
+        mock_parse.side_effect = ImportError("Missing dependency")
+
+        result = cli_runner.invoke(main, ["index", "/nonexistent/file.txt"])
+        # Should handle ImportError gracefully
+        assert result.exit_code != 0
+
+
+def test_cli_database_errors(cli_runner):
+    """Test CLI behavior when database operations fail."""
+    with patch("brainfs.cli.DocumentDatabase") as mock_db:
+        # Simulate database error
+        mock_db.side_effect = Exception("Database connection failed")
+
+        result = cli_runner.invoke(main, ["list"])
+        # Should handle database errors gracefully
+        assert result.exit_code != 0
+
+
+def test_cli_config_with_real_module_import(cli_runner, temp_database):
+    """Test config command with actual module import behavior."""
+    # Don't mock anything, test with real imports
+    result = cli_runner.invoke(main, ["config"])
+    # May fail due to version import issues, but shouldn't crash completely
+    assert result.exit_code in [0, 1]
+
+
+def test_cli_query_with_no_documents_indexed(cli_runner):
+    """Test query when no documents are indexed."""
+    with patch("brainfs.cli.DocumentDatabase") as mock_db:
+        mock_db.return_value.list_documents.return_value = []
+
+        result = cli_runner.invoke(main, ["query", "test"])
+        assert result.exit_code == 0  # Should exit gracefully
+        assert "No documents indexed" in result.output
+
+
+def test_cli_query_with_no_searchable_content(cli_runner, temp_database):
+    """Test query when documents exist but no searchable content."""
+    temp_database.return_value.list_documents.return_value = [("id", "test.txt", "/test.txt")]
+    temp_database.return_value.search_chunks.return_value = []
+
+    result = cli_runner.invoke(main, ["query", "test"])
+    assert result.exit_code == 0
+    assert "No searchable content" in result.output
+
+
+def test_cli_tokenizer_training_error(cli_runner, temp_database, sample_files):
+    """Test CLI behavior when tokenizer training fails."""
+    txt_file = sample_files["txt"]
+
+    with (
+        patch("brainfs.cli.Tokenizer") as mock_tokenizer,
+        patch("brainfs.cli.parse_document", return_value="Test content"),
+        patch("brainfs.cli.smart_chunk", return_value=["Test content"]),
+        patch("brainfs.cli.calculate_file_hash", return_value="abc123"),
+    ):
+        # Make tokenizer.fit raise an exception
+        mock_tokenizer.return_value.fit.side_effect = Exception("Tokenizer training failed")
+
+        result = cli_runner.invoke(main, ["index", str(txt_file)])
+        # Should handle tokenizer errors
+        assert result.exit_code != 0
+
+
+def test_cli_file_processing_errors(cli_runner, temp_database, sample_files):
+    """Test CLI handling of file processing errors."""
+    txt_file = sample_files["txt"]
+
+    with patch("brainfs.cli.parse_document") as mock_parse:
+        # Simulate file processing error
+        mock_parse.side_effect = Exception("File processing failed")
+
+        result = cli_runner.invoke(main, ["index", str(txt_file)])
+        # Should continue and handle the error gracefully
+        assert result.exit_code == 0  # Should complete even with errors
+
+
+def test_cli_chunking_errors(cli_runner, temp_database, sample_files):
+    """Test CLI handling of chunking errors."""
+    txt_file = sample_files["txt"]
+
+    with (
+        patch("brainfs.cli.parse_document", return_value="Test content"),
+        patch("brainfs.cli.smart_chunk") as mock_chunk,
+    ):
+        # Simulate chunking error
+        mock_chunk.side_effect = Exception("Chunking failed")
+
+        result = cli_runner.invoke(main, ["index", str(txt_file)])
+        # Should handle chunking errors gracefully
+        assert result.exit_code == 0
+
+
+def test_cli_empty_file_handling(cli_runner, temp_database, sample_files):
+    """Test CLI handling of empty files."""
+    txt_file = sample_files["txt"]
+
+    with (
+        patch("brainfs.cli.parse_document", return_value=""),
+        patch("brainfs.cli.smart_chunk", return_value=[]),
+    ):
+        result = cli_runner.invoke(main, ["index", str(txt_file)])
+        # Should handle empty files gracefully
+        assert result.exit_code == 0
+
+
+def test_cli_vector_embedding_errors(cli_runner, temp_database, sample_files):
+    """Test CLI handling of vector embedding errors."""
+    txt_file = sample_files["txt"]
+
+    with (
+        patch("brainfs.cli.Tokenizer") as mock_tokenizer,
+        patch("brainfs.cli.parse_document", return_value="Test content"),
+        patch("brainfs.cli.smart_chunk", return_value=["Test content"]),
+        patch("brainfs.cli.calculate_file_hash", return_value="abc123"),
+    ):
+        # Make embed raise an exception
+        mock_tokenizer.return_value.embed.side_effect = Exception("Embedding failed")
+
+        result = cli_runner.invoke(main, ["index", str(txt_file)])
+        # Should handle embedding errors
+        assert result.exit_code == 0  # May continue with errors
+
+
+def test_cli_document_saving_errors(cli_runner, temp_database, sample_files):
+    """Test CLI handling of document saving errors."""
+    txt_file = sample_files["txt"]
+
+    with (
+        patch("brainfs.cli.Tokenizer") as mock_tokenizer,
+        patch("brainfs.cli.parse_document", return_value="Test content"),
+        patch("brainfs.cli.smart_chunk", return_value=["Test content"]),
+        patch("brainfs.cli.calculate_file_hash", return_value="abc123"),
+    ):
+        mock_tokenizer.return_value.embed.return_value = [0.1, 0.2, 0.3]
+
+        # Make add_document raise an exception
+        temp_database.return_value.add_document.side_effect = Exception("Save failed")
+
+        result = cli_runner.invoke(main, ["index", str(txt_file)])
+        # Should handle save errors
+        assert result.exit_code == 0

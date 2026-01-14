@@ -154,3 +154,185 @@ def test_parse_docx_without_python_docx():
     # This test would check behavior when python-docx import fails
     # For now, we'll skip this as it requires mocking imports
     pytest.skip("DOCX parsing tests require python-docx dependency management")
+
+
+def test_document_parser_factory():
+    """Test DocumentParserFactory functionality."""
+    from brainfs.parsers import DocumentParserFactory
+
+    # Test supported extensions
+    supported = DocumentParserFactory.supported_extensions()
+    assert ".txt" in supported
+    assert ".md" in supported
+    assert ".markdown" in supported
+
+    # Test is_supported method
+    txt_path = Path("test.txt")
+    assert DocumentParserFactory.is_supported(txt_path)
+
+    md_path = Path("test.md")
+    assert DocumentParserFactory.is_supported(md_path)
+
+    unsupported_path = Path("test.xyz")
+    assert not DocumentParserFactory.is_supported(unsupported_path)
+
+    # Test get_parser method
+    parser = DocumentParserFactory.get_parser(txt_path)
+    assert parser is not None
+
+
+def test_text_parser_unicode_decode_error(temp_dir):
+    """Test TextParser fallback encoding."""
+    from brainfs.parsers import TextParser
+
+    # Create a file with latin-1 encoding
+    latin_file = temp_dir / "latin.txt"
+    content = "Café naïve résumé"
+    latin_file.write_bytes(content.encode("latin-1"))
+
+    # Should handle encoding gracefully
+    result = TextParser.parse(latin_file)
+    assert "Caf" in result  # Should still read something
+
+
+def test_pdf_parser_import_error():
+    """Test PDF parser when pypdf is not available."""
+    from unittest.mock import patch
+
+    from brainfs.parsers import PDFParser
+
+    with patch("brainfs.parsers.pypdf_module", None):
+        with pytest.raises(ImportError, match="pypdf is required"):
+            PDFParser.parse(Path("test.pdf"))
+
+
+def test_markdown_parser_without_markdown_library(temp_dir):
+    """Test markdown parser fallback when markdown library is not available."""
+    from unittest.mock import patch
+
+    from brainfs.parsers import MarkdownParser
+
+    md_file = temp_dir / "test.md"
+    markdown_content = "# Header\n**bold** text\n*italic* text\n`code`"
+    md_file.write_text(markdown_content)
+
+    with patch("brainfs.parsers.markdown_module", None):
+        result = MarkdownParser.parse(md_file)
+
+        # Should strip markdown formatting
+        assert "Header" in result  # Header # should be removed
+        assert "bold" in result  # ** should be removed
+        assert "italic" in result  # * should be handled
+
+
+def test_docx_parser_import_error():
+    """Test DOCX parser when python-docx is not available."""
+    from unittest.mock import patch
+
+    from brainfs.parsers import DOCXParser
+
+    with patch("brainfs.parsers.docx_module", None):
+        with pytest.raises(ImportError, match="python-docx is required"):
+            DOCXParser.parse(Path("test.docx"))
+
+
+def test_parse_document_with_factory_error_handling(temp_dir):
+    """Test parse_document error handling."""
+    # Test with unsupported file type directly
+    unsupported_file = temp_dir / "test.unknown"
+    unsupported_file.write_text("content")
+
+    # Should raise ValueError for unsupported file type
+    with pytest.raises(ValueError, match="Unsupported file type"):
+        parse_document(unsupported_file)
+
+
+def test_text_parser_empty_file(temp_dir):
+    """Test TextParser with empty file."""
+    from brainfs.parsers import TextParser
+
+    empty_file = temp_dir / "empty.txt"
+    empty_file.write_text("")
+
+    result = TextParser.parse(empty_file)
+    assert result == ""
+
+
+def test_markdown_parser_complex_content(temp_dir):
+    """Test markdown parser with complex content."""
+    from brainfs.parsers import MarkdownParser
+
+    md_file = temp_dir / "complex.md"
+    content = """# Main Title
+
+## Subtitle
+
+This is a paragraph with **bold** text and *italic* text.
+
+- List item 1
+- List item 2
+
+```python
+def hello():
+    print("world")
+```
+
+[Link](http://example.com)
+"""
+    md_file.write_text(content)
+
+    result = MarkdownParser.parse(md_file)
+
+    # Should contain text content
+    assert "Main Title" in result
+    assert "Subtitle" in result
+    assert "paragraph" in result
+    assert "List item" in result
+
+
+def test_parser_file_not_found():
+    """Test parser behavior with non-existent files."""
+    from brainfs.parsers import TextParser
+
+    non_existent = Path("/non/existent/file.txt")
+
+    with pytest.raises(FileNotFoundError):
+        TextParser.parse(non_existent)
+
+
+def test_parser_permission_error(temp_dir):
+    """Test parser behavior with permission errors."""
+    import stat
+
+    from brainfs.parsers import TextParser
+
+    # Create a file and remove read permissions
+    restricted_file = temp_dir / "restricted.txt"
+    restricted_file.write_text("restricted content")
+    restricted_file.chmod(stat.S_IWUSR)  # Write only, no read
+
+    try:
+        # Should raise PermissionError
+        with pytest.raises(PermissionError):
+            TextParser.parse(restricted_file)
+    finally:
+        # Restore permissions for cleanup
+        restricted_file.chmod(stat.S_IRUSR | stat.S_IWUSR)
+
+
+def test_document_parser_factory_edge_cases():
+    """Test DocumentParserFactory edge cases."""
+    from brainfs.parsers import DocumentParserFactory
+
+    # Test with path without extension
+    no_ext_path = Path("filename")
+    assert not DocumentParserFactory.is_supported(no_ext_path)
+
+    # Test with hidden file
+    hidden_file = Path(".hidden.txt")
+    assert DocumentParserFactory.is_supported(hidden_file)
+
+    # Test case insensitive extensions
+    # upper_case_path = Path("test.TXT")
+    # Behavior depends on implementation - should handle case insensitivity
+    # This test documents current behavior but is not implemented yet

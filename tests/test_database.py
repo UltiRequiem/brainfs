@@ -215,3 +215,45 @@ def test_database_error_handling(temp_dir):
 
     retrieved = db.get_document("test-doc-1")
     assert retrieved is not None
+
+
+def test_database_home_directory_default(temp_dir):
+    """Test database with default home directory path."""
+    from unittest.mock import patch
+
+    # Mock Path.home() to use temp directory
+    with patch("pathlib.Path.home", return_value=temp_dir):
+        db = DocumentDatabase()
+        # Should create database in mocked home/.brainfs/
+        expected_path = temp_dir / ".brainfs" / "documents.db"
+        assert str(db.db_path) == str(expected_path)
+
+
+def test_database_document_not_found(test_db):
+    """Test get_document with non-existent document."""
+    result = test_db.get_document("non-existent-id")
+    assert result is None
+
+
+def test_database_search_chunks_with_limit(test_db):
+    """Test search_chunks with custom limit."""
+    # Add multiple documents
+    for i in range(5):
+        document = Document(
+            id=f"doc-{i}",
+            path=f"/test/doc{i}.txt",
+            filename=f"doc{i}.txt",
+            content=f"Content {i}",
+            file_hash=f"hash{i}",
+            chunks=[f"Content {i}", f"More content {i}"],
+            vectors=[[float(i), 0.0, 0.0], [0.0, float(i), 0.0]],
+        )
+        test_db.add_document(document)
+
+    # Search with limit
+    chunks = test_db.search_chunks(limit=5)
+    assert len(chunks) == 5  # Should respect limit
+
+    # Search with no limit (uses default)
+    all_chunks = test_db.search_chunks()
+    assert len(all_chunks) == 10  # 5 docs * 2 chunks each

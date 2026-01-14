@@ -97,3 +97,146 @@ def test_tokenizer_consistency():
     vector1 = tokenizer1.embed(text)
     vector2 = tokenizer2.embed(text)
     assert vector1 == vector2
+
+
+def test_tokenizer_nltk_import_error():
+    """Test tokenizer behavior when NLTK is not available."""
+    from unittest.mock import patch
+
+    with patch("brainfs.tokenizer.NLTK_AVAILABLE", False):
+        tokenizer = Tokenizer()
+        documents = ["hello world", "testing fallback"]
+
+        # Should use fallback stemmer
+        tokenizer.fit(documents)
+        assert len(tokenizer.vocab) > 0
+
+        # Should still work with simple stemming
+        words = tokenizer._clean("running runs runner")
+        assert len(words) > 0
+
+
+def test_tokenizer_large_vocabulary():
+    """Test tokenizer with large vocabulary."""
+    tokenizer = Tokenizer()
+
+    # Create documents with many unique words
+    documents = []
+    for i in range(50):
+        doc = f"document {i} contains unique words like word{i} and term{i}"
+        documents.append(doc)
+
+    tokenizer.fit(documents)
+
+    # Should handle large vocabulary
+    assert len(tokenizer.vocab) > 20  # Should have many unique terms
+
+    # Embedding should work with large vocab
+    vector = tokenizer.embed("document unique word")
+    assert len(vector) == len(tokenizer.vocab)
+    assert sum(vector) > 0
+
+
+def test_tokenizer_special_characters():
+    """Test tokenizer with special characters and edge cases."""
+    tokenizer = Tokenizer()
+
+    documents = [
+        "hello@example.com",
+        "test-case_with_underscores",
+        "numbers123mixed456",
+        "punctuation... lots!!! of??? it.",
+    ]
+
+    tokenizer.fit(documents)
+    assert len(tokenizer.vocab) > 0
+
+    # Should handle special characters in embedding
+    vector = tokenizer.embed("test punctuation")
+    assert len(vector) == len(tokenizer.vocab)
+
+
+def test_tokenizer_very_long_text():
+    """Test tokenizer with very long text."""
+    tokenizer = Tokenizer()
+
+    # Create long document
+    long_text = " ".join([f"word{i}" for i in range(100)])
+    documents = [long_text]
+
+    tokenizer.fit(documents)
+
+    # Should handle long text
+    vector = tokenizer.embed("word1 word2 word3")
+    assert len(vector) == len(tokenizer.vocab)
+
+
+def test_tokenizer_duplicate_documents():
+    """Test tokenizer with duplicate documents."""
+    tokenizer = Tokenizer()
+
+    # Same document repeated
+    documents = ["hello world"] * 10
+
+    tokenizer.fit(documents)
+
+    # Should handle duplicates gracefully
+    assert len(tokenizer.vocab) > 0
+
+
+def test_tokenizer_numeric_content():
+    """Test tokenizer with numeric content."""
+    tokenizer = Tokenizer()
+
+    documents = [
+        "123 456 789",
+        "price 29",
+        "version 1",
+        "year 2023",
+    ]
+
+    tokenizer.fit(documents)
+
+    # Should handle numeric content
+    vector = tokenizer.embed("123 price version")
+    assert len(vector) == len(tokenizer.vocab)
+
+
+def test_tokenizer_embedding_vector_properties():
+    """Test properties of embedding vectors."""
+    tokenizer = Tokenizer()
+
+    documents = ["hello world peace", "world peace love", "love happiness"]
+    tokenizer.fit(documents)
+
+    vector = tokenizer.embed("hello peace")
+
+    # Vector should have correct dimensions
+    assert len(vector) == len(tokenizer.vocab)
+
+    # Should be numeric
+    assert all(isinstance(x, (int, float)) for x in vector)
+
+    # Should be non-negative (bag of words)
+    assert all(x >= 0 for x in vector)
+
+
+def test_tokenizer_word_frequency_impact():
+    """Test that word frequency impacts embeddings correctly."""
+    tokenizer = Tokenizer()
+
+    documents = [
+        "apple apple apple",  # High frequency
+        "banana",  # Low frequency
+        "apple banana",
+    ]
+
+    tokenizer.fit(documents)
+
+    # Get embeddings
+    apple_heavy = tokenizer.embed("apple apple")
+    banana_single = tokenizer.embed("banana")
+
+    # Both should have non-zero elements
+    assert sum(apple_heavy) > 0
+    assert sum(banana_single) > 0

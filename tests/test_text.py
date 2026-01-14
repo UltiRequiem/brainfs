@@ -134,3 +134,27 @@ def test_chunk_edge_cases():
     # Large chunk size
     text = "one two three"
     assert chunk_text(text, chunk_size=100) == [text]
+
+
+def test_smart_chunk_fallback_to_sentences():
+    """Test smart_chunk fallback when paragraph chunking returns no chunks."""
+    from unittest.mock import patch
+
+    # Text that would trigger paragraph chunking but return empty
+    text = "Single line of text without double newlines."
+
+    with patch("brainfs.text.chunk_by_paragraphs", return_value=[]):
+        # Should fallback to sentence chunking
+        chunks = smart_chunk(text, method="auto")
+        assert len(chunks) > 0
+
+
+def test_chunk_by_paragraphs_fallback():
+    """Test chunk_by_paragraphs fallback to sentence chunking."""
+    # Text without paragraphs (no double newlines)
+    text = "Single line text that has no paragraph breaks at all."
+
+    chunks = chunk_by_paragraphs(text, max_chunk_size=1000)
+
+    # Should fallback and return chunks
+    assert len(chunks) > 0
