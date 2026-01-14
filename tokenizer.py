@@ -1,8 +1,11 @@
-import string
-
 class Tokenizer:
     vocab: dict[str, int]
     TRANSLATION_TABLE: dict[int, int | None] = str.maketrans('', '', "!.?,;:\"'()[]{}<>")
+    SUFFIXES: list[tuple[str,str]] = [
+          ('ing', ''), ('ly', ''), ('ed', ''), ('ies', 'y'), ('ied', 'y'),
+          ('ies', 'y'), ('s', ''), ('es', ''), ('er', ''), ('est', ''),
+          ('tion', ''), ('ness', ''), ('ment', ''), ('able', ''), ('ible', '')
+      ]
 
     def __init__(self):
         self.vocab = {}
@@ -33,7 +36,17 @@ class Tokenizer:
         return [0] * len(self.vocab)
 
     @staticmethod
+    def _stem_word(word:str, extra: int = 2)->str:
+        for suffix, replacement in Tokenizer.SUFFIXES:
+            if word.endswith(suffix) and len(word) > len(suffix) + extra:
+                return word[:-len(suffix)] + replacement
+
+        return word
+
+    @staticmethod
     def _clean(word:str)->list[str]:
         clean = word.lower().translate(Tokenizer.TRANSLATION_TABLE)
+        words = clean.split()
+        stemed = [Tokenizer._stem_word(w) for w in words]
 
-        return clean.split()
+        return stemed
