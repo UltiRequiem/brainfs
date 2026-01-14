@@ -1,4 +1,8 @@
-# Brainfs - AI Document Search & RAG
+# Brainfs
+
+> AI Document Search & RAG
+
+[![codecov](https://codecov.io/github/UltiRequiem/brainfs/graph/badge.svg?token=3nfAbcCKUc)](https://codecov.io/github/UltiRequiem/brainfs)
 
 A modern CLI tool for document indexing and querying using vector search and
 LLM-powered answer generation.
